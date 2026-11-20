@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Shared kernel.
+
+      Dle.Domain MUST NOT reference ASP.NET Core, EF Core, Npgsql, Dapper or any
+      NuGet package other than System.Text.Json (part of the BCL) and
+      Microsoft.Extensions.Logging.Abstractions.
+
+    Do not add a ProjectReference or a PackageReference to this file.
+  -->
+
+  <PropertyGroup>
+    <IsPackable>true</IsPackable>
+    <PackageId>Dle.Domain</PackageId>
+    <Description>Deep Link Engine shared kernel: routing rules, consent gate, link snapshots, attribution primitives and infrastructure ports. No framework dependencies.</Description>
+  </PropertyGroup>
+
+    <!-- On net11.0, Microsoft.Extensions.Logging.Abstractions is part of Microsoft.NETCore.App (NU1510). -->
+
+</Project>

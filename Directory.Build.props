@@ -1,0 +1,109 @@
+<Project>
+
+  <!--
+    Deep Link Engine (DLE) — properties shared by every project in the solution.
+    Nothing here may be relaxed in an individual project without a written reason.
+  -->
+
+  <PropertyGroup Label="Identity">
+    <Product>Deep Link Engine</Product>
+    <Authors>Kyberware</Authors>
+    <Company>Kyberware</Company>
+    <Copyright>Copyright (c) Kyberware</Copyright>
+    <VersionPrefix>1.0.0</VersionPrefix>
+    <NeutralLanguage>en</NeutralLanguage>
+  </PropertyGroup>
+
+  <PropertyGroup Label="Language">
+    <TargetFramework>net11.0</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+
+  <PropertyGroup Label="Quality gates">
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <EnableNETAnalyzers>true</EnableNETAnalyzers>
+    <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+    <AnalysisLevel>latest-Recommended</AnalysisLevel>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <ReportAnalyzer>false</ReportAnalyzer>
+
+    <!--
+      Only genuinely noisy rules are muted globally. Severities for everything
+      else live in .editorconfig so they can be reasoned about in one place.
+
+        CA1848  LoggerMessage delegates — required on the hot path only,
+                mandating it everywhere would drown ordinary control-plane code.
+        CA2007  ConfigureAwait(false) — this is application code with no
+                SynchronizationContext; ASP.NET Core does not need it.
+        CA1812  Uninstantiated internal classes — false positive for every type
+                that only the DI container constructs.
+        CA1515  "Make types internal" — public surface in app assemblies is
+                intentional (minimal API handlers, integration test fixtures).
+
+      Deliberately NOT listed: CA1031 (a global suppression of catch-all
+      handlers is forbidden) and CS1591 (missing XML doc comments
+      on public members must stay a build error).
+    -->
+    <!--
+      NuGet audit: Low (NU1901) and Moderate (NU1902) are suppressed from MSBuild
+      warnaserror so they don't break CI builds or locked restores; High and Critical
+      vulnerabilities remain enforced by the hard gate in .github/scripts/nuget-vulnerabilities.py.
+    -->
+    <NoWarn>$(NoWarn);CA1848;CA2007;CA1812;CA1515;NU1901;NU1902</NoWarn>
+    <!--
+      High (NU1903) and Critical (NU1904) advisories stay warnings in the build itself: an advisory
+      published after a tag would otherwise break restore of that tag for everyone who builds it
+      later. The same hard gate as above fails CI on them.
+    -->
+    <WarningsNotAsErrors>$(WarningsNotAsErrors);NU1903;NU1904</WarningsNotAsErrors>
+  </PropertyGroup>
+
+  <PropertyGroup Label="Runtime behaviour">
+    <!-- Every ToString/Parse uses CultureInfo.InvariantCulture. -->
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <UseSystemResourceKeys>false</UseSystemResourceKeys>
+    <TieredPGO>true</TieredPGO>
+    <ServerGarbageCollection>false</ServerGarbageCollection>
+  </PropertyGroup>
+
+  <PropertyGroup Label="Reproducible builds">
+    <Deterministic>true</Deterministic>
+    <DebugType>portable</DebugType>
+    <IncludeSymbols>true</IncludeSymbols>
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+    <EmbedUntrackedSources>true</EmbedUntrackedSources>
+    <PublishRepositoryUrl>true</PublishRepositoryUrl>
+    <ContinuousIntegrationBuild Condition="'$(CI)' == 'true' Or '$(TF_BUILD)' == 'true' Or '$(GITHUB_ACTIONS)' == 'true'">true</ContinuousIntegrationBuild>
+  </PropertyGroup>
+
+  <PropertyGroup Label="Packages">
+    <!-- Central Package Management: no Version attribute may appear on a PackageReference. -->
+    <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+    <!-- packages.lock.json per project: CI restores in locked mode so a resolved dependency
+         graph cannot drift between a review and a release (OWASP A03:2025 supply chain). -->
+    <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
+    <RestoreLockedMode Condition="'$(ContinuousIntegrationBuild)' == 'true' And Exists('$(MSBuildProjectDirectory)/packages.lock.json')">true</RestoreLockedMode>
+  </PropertyGroup>
+
+  <PropertyGroup Label="NuGet package metadata">
+    <PackageLicenseExpression>AGPL-3.0-only</PackageLicenseExpression>
+    <PackageProjectUrl>https://github.com/MAGORS-organisation/Kyberware.DLE</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/MAGORS-organisation/Kyberware.DLE</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageTags>deeplink;deep-linking;attribution;universal-links;app-links;deferred-deep-linking;aspnetcore</PackageTags>
+    <PackageReadmeFile Condition="Exists('$(MSBuildThisFileDirectory)README.md')">README.md</PackageReadmeFile>
+    <EnablePackageValidation>false</EnablePackageValidation>
+  </PropertyGroup>
+
+  <!--
+    The repository README, when there is one, is packed with every library. IsPackable is set by the individual
+    project files, which MSBuild evaluates after this file, so the condition here
+    is only Exists(): projects with IsPackable=false simply never run `pack`.
+  -->
+  <ItemGroup Condition="Exists('$(MSBuildThisFileDirectory)README.md')">
+    <None Include="$(MSBuildThisFileDirectory)README.md" Pack="true" PackagePath="\" Visible="false" />
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,486 @@
+using Dle.Control.Configuration;
+using Dle.Control.Features.Domains;
+using Dle.Control.Features.Shared;
+using Dle.Control.Identity;
+using Dle.Control.Infrastructure;
+using Microsoft.Extensions.Options;
+
+namespace Dle.Control.Features.Tenants;
+
+/// <summary>
+/// <c>GET</c>, <c>POST</c>, <c>PATCH</c> and <c>DELETE /api/v1/tenants</c>.
+/// </summary>
+public static class ManageTenants
+{
+    /// <summary>Longest tenant name accepted.</summary>
+    private const int MaxNameLength = 200;
+
+    /// <summary>Whether a tenant is the one whose owners administer the instance.</summary>
+    private static bool IsOperatorTenant(HttpContext http, Guid id) =>
+        http.RequestServices.GetRequiredService<DleInstanceOperator>().IsOperator(id);
+
+    /// <summary>
+    /// The refusal for suspending or deleting the operator tenant.
+    /// </summary>
+    /// <remarks>
+    /// Tenant administration is only open to owners of the operator tenant, and a tenant that is not
+    /// active cannot authenticate at all. Taking the operator tenant out would therefore leave no
+    /// credential able to undo it, short of editing the database.
+    /// </remarks>
+    private static IResult OperatorTenantIsProtected(string what) =>
+        DleProblem.Conflict(
+            ProblemCodes.WriteConflict,
+            "The operator tenant cannot be " + what + ".",
+            "This tenant administers the instance. Name another operator tenant first "
+            + "(Dle:Control:InstanceTenantId), then repeat the request.");
+
+    /// <summary>Most tenants returned in one listing.</summary>
+    private const int ListLimit = 500;
+
+    /// <summary>Reads the caller's own tenant.</summary>
+    /// <param name="http">The request, for the authenticated caller.</param>
+    /// <param name="tenants">Tenant storage, scoped to the caller's tenant.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>200 with the tenant, or 404 when it has been deactivated.</returns>
+    /// <remarks>
+    /// Separate from the identifier route on purpose. Reading one's own tenant is an ordinary,
+    /// viewer-level operation; reading somebody else's is instance administration, and conflating
+    /// them would mean every viewer credential carried a route that could address another tenant.
+    /// </remarks>
+    public static async Task<IResult> GetOwnAsync(
+        HttpContext http,
+        TenantRepository tenants,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(http);
+        ArgumentNullException.ThrowIfNull(tenants);
+
+        DleCaller caller = http.RequireDleCaller();
+        Tenant? tenant = await tenants.GetAsync(caller.TenantId, cancellationToken);
+
+        return tenant is null
+            ? DleProblem.NotFound("The tenant no longer exists.")
+            : TypedResults.Ok(Project(tenant));
+    }
+
+    /// <summary>Lists every tenant on the instance.</summary>
+    /// <param name="includeDeleted">Whether deactivated tenants are listed too.</param>
+    /// <param name="tenants">Tenant storage.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>The tenants, oldest first.</returns>
+    public static async Task<IResult> ListAsync(
+        bool? includeDeleted,
+        TenantRepository tenants,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(tenants);
+
+        IReadOnlyList<Tenant> rows =
+            await tenants.ListAsync(includeDeleted ?? false, ListLimit, cancellationToken);
+
+        List<TenantResponse> items = new(rows.Count);
+
+        foreach (Tenant row in rows)
+        {
+            items.Add(Project(row));
+        }
+
+        return TypedResults.Ok(new PagedResponse<TenantResponse>
+        {
+            Items = items,
+            Total = items.Count,
+        });
+    }
+
+    /// <summary>Reads one tenant.</summary>
+    /// <param name="id">The tenant identifier.</param>
+    /// <param name="administration">Cross-tenant tenant storage.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>200 with the tenant, or 404.</returns>
+    public static async Task<IResult> GetAsync(
+        Guid id,
+        TenantAdministration administration,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(administration);
+
+        Tenant? tenant = await administration.GetAsync(id, includeDeleted: true, cancellationToken);
+
+        return tenant is null
+            ? DleProblem.NotFound("There is no tenant with that identifier.")
+            : TypedResults.Ok(Project(tenant));
+    }
+
+    /// <summary>Provisions a tenant.</summary>
+    /// <param name="request">The tenant to create.</param>
+    /// <param name="http">The request, for the authenticated caller.</param>
+    /// <param name="tenants">Tenant storage.</param>
+    /// <param name="administration">Cross-tenant tenant storage, for the slug uniqueness check.</param>
+    /// <param name="audit">The administrative audit trail.</param>
+    /// <param name="privacyOptions">The privacy options, for default consent mode configuration.</param>
+    /// <param name="controlOptions">Control-plane options, for single-tenant self-service limits.</param>
+    /// <param name="operatorRegistry">Knows whether an explicit operator tenant is configured.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>201 with the tenant, or a problem document.</returns>
+    /// <remarks>
+    /// The default consent mode is <c>aggregate_only</c>, the mode that needs no consent banner. A
+    /// fresh tenant therefore never collects more than the legitimate interest basis supports until
+    /// somebody deliberately widens it.
+    /// </remarks>
+    public static async Task<IResult> CreateAsync(
+        CreateTenantRequest request,
+        HttpContext http,
+        TenantRepository tenants,
+        TenantAdministration administration,
+        AuditLogWriter audit,
+        IOptions<ControlPrivacyOptions> privacyOptions,
+        IOptions<DleControlOptions> controlOptions,
+        DleInstanceOperator operatorRegistry,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        ArgumentNullException.ThrowIfNull(http);
+        ArgumentNullException.ThrowIfNull(tenants);
+        ArgumentNullException.ThrowIfNull(administration);
+        ArgumentNullException.ThrowIfNull(audit);
+        ArgumentNullException.ThrowIfNull(privacyOptions);
+        ArgumentNullException.ThrowIfNull(controlOptions);
+        ArgumentNullException.ThrowIfNull(operatorRegistry);
+
+        DleCaller caller = http.RequireDleCaller();
+
+        if (!operatorRegistry.IsConfigured && controlOptions.Value.AllowTenantSelfService)
+        {
+            int existingCount = await tenants.CountAsync(includeDeleted: false, cancellationToken);
+
+            if (existingCount >= 1)
+            {
+                return DleProblem.Conflict(
+                    ProblemCodes.Base + "single-tenant-limit",
+                    "This instance is restricted to a single tenant.",
+                    "Single-tenant self-service mode allows only one active tenant. Configure "
+                    + "Dle:Control:InstanceTenantId to operate a multi-tenant instance.");
+            }
+        }
+
+        Dictionary<string, string[]> errors = new(StringComparer.Ordinal);
+
+        if (!SlugPolicy.TryNormalize(request.Slug, out string slug) || slug.Length < SlugPolicy.MinCustomLength)
+        {
+            errors["slug"] =
+            [
+                "A tenant slug is at least three characters of letters, digits and hyphens.",
+            ];
+        }
+
+        string name = request.Name?.Trim() ?? string.Empty;
+
+        if (name.Length == 0 || name.Length > MaxNameLength)
+        {
+            errors["name"] =
+            [
+                string.Create(
+                    CultureInfo.InvariantCulture,
+                    $"A display name is required and may be at most {MaxNameLength} characters."),
+            ];
+        }
+
+        string configuredDefault = privacyOptions.Value.ConsentMode;
+        string consentMode = ManageDomains.TryParseConsentMode(configuredDefault, out ConsentMode defaultParsed)
+            ? ConsentModeName(defaultParsed)
+            : "aggregate_only";
+
+        if (!string.IsNullOrWhiteSpace(request.ConsentMode))
+        {
+            if (!ManageDomains.TryParseConsentMode(request.ConsentMode, out ConsentMode parsed))
+            {
+                errors["consent_mode"] = ["The consent mode must be off, aggregate_only or full."];
+            }
+            else
+            {
+                consentMode = ConsentModeName(parsed);
+            }
+        }
+
+        if (errors.Count > 0)
+        {
+            return DleProblem.Validation(errors, "The tenant cannot be provisioned as described.");
+        }
+
+        if (await administration.SlugExistsAsync(slug, cancellationToken))
+        {
+            return DleProblem.Conflict(
+                ProblemCodes.Base + "tenant-slug-taken",
+                "The tenant slug is already in use.",
+                "Tenant slugs are unique across the instance and are never reused, because the audit "
+                + "trail refers to them.");
+        }
+
+        Tenant tenant = await tenants.CreateAsync(
+            new Tenant
+            {
+                Slug = slug,
+                Name = name,
+                Status = TenantStatuses.Active,
+                ConsentMode = consentMode,
+            },
+            cancellationToken);
+
+        await AdministrativeAudit.RecordAsync(
+            audit,
+            caller,
+            AuditActions.TenantCreated,
+            AuditActions.TenantSubject,
+            tenant.Id.ToString(),
+            new Dictionary<string, string>(StringComparer.Ordinal)
+            {
+                ["slug"] = tenant.Slug,
+                ["consent_mode"] = tenant.ConsentMode,
+            },
+            cancellationToken);
+
+        return TypedResults.Created(
+            string.Create(CultureInfo.InvariantCulture, $"/api/v1/tenants/{tenant.Id}"),
+            Project(tenant));
+    }
+
+    /// <summary>Changes a tenant.</summary>
+    /// <param name="id">The tenant identifier.</param>
+    /// <param name="request">The fields to change.</param>
+    /// <param name="http">The request, for the authenticated caller.</param>
+    /// <param name="administration">Cross-tenant tenant storage.</param>
+    /// <param name="tenants">Tenant storage, used to enumerate domain hosts for cache invalidation.</param>
+    /// <param name="audit">The administrative audit trail.</param>
+    /// <param name="cache">Drops the cached configuration of every host of the tenant.</param>
+    /// <param name="credentialCache">Drops cached credentials belonging to the updated tenant.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>200 with the tenant, or a problem document.</returns>
+    /// <remarks>
+    /// A consent mode change is recorded with the old and the new value. Tightening takes effect on
+    /// the next resolve; widening does not retroactively make already collected data lawful, and the
+    /// audit entry is what lets that distinction be reconstructed later.
+    /// </remarks>
+    public static async Task<IResult> UpdateAsync(
+        Guid id,
+        UpdateTenantRequest request,
+        HttpContext http,
+        TenantAdministration administration,
+        TenantRepository tenants,
+        AuditLogWriter audit,
+        ILinkCacheInvalidator cache,
+        DleCredentialCache credentialCache,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        ArgumentNullException.ThrowIfNull(http);
+        ArgumentNullException.ThrowIfNull(administration);
+        ArgumentNullException.ThrowIfNull(tenants);
+        ArgumentNullException.ThrowIfNull(audit);
+        ArgumentNullException.ThrowIfNull(cache);
+        ArgumentNullException.ThrowIfNull(credentialCache);
+
+        DleCaller caller = http.RequireDleCaller();
+
+        Tenant? existing = await administration.GetAsync(id, includeDeleted: false, cancellationToken);
+
+        if (existing is null)
+        {
+            return DleProblem.NotFound("There is no tenant with that identifier.");
+        }
+
+        string? name = null;
+
+        if (request.Name is not null)
+        {
+            name = request.Name.Trim();
+
+            if (name.Length == 0 || name.Length > MaxNameLength)
+            {
+                return DleProblem.Validation(
+                    "name",
+                    string.Create(
+                        CultureInfo.InvariantCulture,
+                        $"A display name may be at most {MaxNameLength} characters."));
+            }
+        }
+
+        string? consentMode = null;
+
+        if (request.ConsentMode is not null)
+        {
+            if (!ManageDomains.TryParseConsentMode(request.ConsentMode, out ConsentMode parsed))
+            {
+                return DleProblem.Validation(
+                    "consent_mode",
+                    "The consent mode must be off, aggregate_only or full.");
+            }
+
+            consentMode = ConsentModeName(parsed);
+        }
+
+        string? status = null;
+
+        if (request.Status is not null)
+        {
+            if (!TenantStatuses.IsSettable(request.Status))
+            {
+                return DleProblem.Validation(
+                    "status",
+                    "The status must be active or suspended. Deletion goes through DELETE, which is "
+                    + "the operation the audit trail and the soft-delete filter are written around.");
+            }
+
+            status = request.Status.Trim().ToLowerInvariant();
+        }
+
+        if (string.Equals(status, TenantStatuses.Suspended, StringComparison.Ordinal) && IsOperatorTenant(http, id))
+        {
+            return OperatorTenantIsProtected("suspended");
+        }
+
+        Tenant? tenant = await administration.UpdateAsync(
+            id,
+            name,
+            consentMode,
+            status,
+            cancellationToken);
+
+        if (tenant is null)
+        {
+            return DleProblem.NotFound("There is no tenant with that identifier.");
+        }
+
+        Dictionary<string, string> metadata = new(StringComparer.Ordinal)
+        {
+            ["slug"] = tenant.Slug,
+        };
+
+        if (consentMode is not null)
+        {
+            metadata["consent_mode_from"] = existing.ConsentMode;
+            metadata["consent_mode_to"] = consentMode;
+        }
+
+        if (status is not null)
+        {
+            metadata["status_from"] = existing.Status;
+            metadata["status_to"] = status;
+        }
+
+        await AdministrativeAudit.RecordAsync(
+            audit,
+            caller,
+            AuditActions.TenantUpdated,
+            AuditActions.TenantSubject,
+            tenant.Id.ToString(),
+            metadata,
+            cancellationToken);
+
+        if (consentMode is not null || status is not null)
+        {
+            // The effective consent mode is baked into every cached link snapshot, so a change has to
+            // drop them all. A tightened mode that kept being ignored until the cache expired would
+            // be a privacy setting that does not take effect when it is set.
+            // A status change is the same: the edge only resolves the links of an active tenant, and
+            // a suspension that waited for the cache to expire would not be one.
+            await cache.InvalidateTenantAsync(tenant.Id, cancellationToken);
+
+            foreach (string host in await tenants.ListDomainHostsAsync(tenant.Id, cancellationToken))
+            {
+                await cache.InvalidateHostAsync(host, cancellationToken);
+            }
+        }
+
+        if (status is not null)
+        {
+            await credentialCache.InvalidateTenantAsync(tenant.Id, cancellationToken);
+        }
+
+        return TypedResults.Ok(Project(tenant));
+    }
+
+    /// <summary>Deactivates a tenant.</summary>
+    /// <param name="id">The tenant identifier.</param>
+    /// <param name="http">The request, for the authenticated caller.</param>
+    /// <param name="tenants">Tenant storage.</param>
+    /// <param name="audit">The administrative audit trail.</param>
+    /// <param name="cache">Drops the cached configuration of every host of the tenant.</param>
+    /// <param name="credentialCache">Drops cached credentials belonging to the deleted tenant.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>204, or 404.</returns>
+    /// <remarks>
+    /// The row stays. A hard delete would cascade through links, keys and the audit trail, and the
+    /// audit trail is the one thing that has to outlive the objects it describes; the soft-delete
+    /// filter is what stops the tenant appearing anywhere it should not.
+    /// </remarks>
+    public static async Task<IResult> DeleteAsync(
+        Guid id,
+        HttpContext http,
+        TenantRepository tenants,
+        AuditLogWriter audit,
+        ILinkCacheInvalidator cache,
+        DleCredentialCache credentialCache,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(http);
+        ArgumentNullException.ThrowIfNull(tenants);
+        ArgumentNullException.ThrowIfNull(audit);
+        ArgumentNullException.ThrowIfNull(cache);
+        ArgumentNullException.ThrowIfNull(credentialCache);
+
+        DleCaller caller = http.RequireDleCaller();
+
+        if (IsOperatorTenant(http, id))
+        {
+            return OperatorTenantIsProtected("deleted");
+        }
+
+        if (!await tenants.SoftDeleteAsync(id, cancellationToken))
+        {
+            return DleProblem.NotFound("There is no tenant with that identifier.");
+        }
+
+        await AdministrativeAudit.RecordAsync(
+            audit,
+            caller,
+            AuditActions.TenantDeleted,
+            AuditActions.TenantSubject,
+            id.ToString(),
+            metadata: null,
+            cancellationToken);
+
+        await cache.InvalidateTenantAsync(id, cancellationToken);
+
+        foreach (string host in await tenants.ListDomainHostsAsync(id, cancellationToken))
+        {
+            await cache.InvalidateHostAsync(host, cancellationToken);
+        }
+
+        await credentialCache.InvalidateTenantAsync(id, cancellationToken);
+
+        return TypedResults.NoContent();
+    }
+
+    /// <summary>Projects a stored tenant.</summary>
+    /// <param name="tenant">The stored row.</param>
+    /// <returns>The representation.</returns>
+    private static TenantResponse Project(Tenant tenant) => new()
+    {
+        Id = tenant.Id,
+        Slug = tenant.Slug,
+        Name = tenant.Name,
+        Status = tenant.Status,
+        ConsentMode = tenant.ConsentMode,
+        CreatedAt = tenant.CreatedAt,
+    };
+
+    /// <summary>Renders a consent mode as the name stored and returned.</summary>
+    /// <param name="mode">The mode.</param>
+    /// <returns>The name.</returns>
+    private static string ConsentModeName(ConsentMode mode) => mode switch
+    {
+        ConsentMode.Full => "full",
+        ConsentMode.AggregateOnly => "aggregate_only",
+        _ => "off",
+    };
+}

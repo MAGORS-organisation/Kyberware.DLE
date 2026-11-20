@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <StartupObject>Dle.FuzzDriver.Program</StartupObject>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <IsTestProject>false</IsTestProject>
+    <IsTestingPlatformApplication>false</IsTestingPlatformApplication>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Dle.SecurityTests\Dle.SecurityTests.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="SharpFuzz" />
+  </ItemGroup>
+
+</Project>

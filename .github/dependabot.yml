@@ -1,0 +1,145 @@
+# =============================================================================
+# Dependabot — defence against a compromised dependency: locked versions + Dependabot + review.
+#
+# Every ecosystem the repository actually contains. Pull requests target `develop` (the
+# integration branch; `master` is reserved for releases). Minor and patch updates are grouped
+# per ecosystem so a week's worth of bumps is one reviewable PR; majors stay individual.
+#
+# NuGet uses Central Package Management (Directory.Packages.props) with per-project
+# packages.lock.json — Dependabot updates both. GitHub Actions are pinned to commit SHAs with a
+# version comment; Dependabot keeps the SHA and the comment in step.
+# =============================================================================
+version: 2
+
+updates:
+  - package-ecosystem: nuget
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: Europe/Bratislava
+    target-branch: develop
+    open-pull-requests-limit: 10
+    labels: [dependencies, nuget]
+    commit-message:
+      prefix: "build(deps)"
+    groups:
+      nuget-minor-patch:
+        update-types: [minor, patch]
+
+  - package-ecosystem: npm
+    directory: /sdk/web
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: Europe/Bratislava
+    target-branch: develop
+    open-pull-requests-limit: 5
+    labels: [dependencies, sdk-web]
+    commit-message:
+      prefix: "build(deps)"
+    groups:
+      web-sdk-minor-patch:
+        update-types: [minor, patch]
+    ignore:
+      # Held until after 1.0. TypeScript 7 ships no JavaScript compiler API, which
+      # typescript-eslint (peer < 6.1) and tsup's declaration build need.
+      - dependency-name: "typescript"
+        update-types: ["version-update:semver-major"]
+
+  - package-ecosystem: npm
+    directory: /src/Dle.Admin.Web
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: Europe/Bratislava
+    target-branch: develop
+    open-pull-requests-limit: 5
+    labels: [dependencies, admin-ui]
+    commit-message:
+      prefix: "build(deps)"
+    groups:
+      admin-ui-minor-patch:
+        update-types: [minor, patch]
+    ignore:
+      # Held until after 1.0, to ship it on a pinned toolchain:
+      # - eslint / @eslint/js 10: eslint-plugin-jsx-a11y (latest 6.10.2) allows eslint up to 9 only;
+      # - @vitejs/plugin-react 6 needs vite 8, a two-major jump from vite 6;
+      # - typescript 7: no JavaScript compiler API for typescript-eslint.
+      - dependency-name: "eslint"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "@eslint/js"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "@vitejs/plugin-react"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "vite"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "typescript"
+        update-types: ["version-update:semver-major"]
+
+  - package-ecosystem: gradle
+    directory: /sdk/android
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: Europe/Bratislava
+    target-branch: develop
+    open-pull-requests-limit: 5
+    labels: [dependencies, sdk-android]
+    commit-message:
+      prefix: "build(deps)"
+    groups:
+      android-minor-patch:
+        update-types: [minor, patch]
+
+  - package-ecosystem: swift
+    directory: /sdk/ios
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: Europe/Bratislava
+    target-branch: develop
+    open-pull-requests-limit: 5
+    labels: [dependencies, sdk-ios]
+    commit-message:
+      prefix: "build(deps)"
+    groups:
+      ios-minor-patch:
+        update-types: [minor, patch]
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: Europe/Bratislava
+    target-branch: develop
+    open-pull-requests-limit: 5
+    labels: [dependencies, ci]
+    commit-message:
+      prefix: "ci(deps)"
+    groups:
+      actions-minor-patch:
+        update-types: [minor, patch]
+
+  - package-ecosystem: docker
+    directory: /deploy/docker
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: Europe/Bratislava
+    target-branch: develop
+    open-pull-requests-limit: 5
+    labels: [dependencies, docker]
+    commit-message:
+      prefix: "build(deps)"
+    groups:
+      base-images-minor-patch:
+        update-types: [minor, patch]

@@ -1,0 +1,58 @@
+{
+  "version": 2,
+  "dependencies": {
+    "net11.0": {
+      "BouncyCastle.Cryptography": {
+        "type": "Direct",
+        "requested": "[2.7.0, )",
+        "resolved": "2.7.0",
+        "contentHash": "U+12df8UEWHgBi04YVf/Lgi2dy3SItlIYvHjjEVa/BngCQIzDCDRBk50DDByCfDvSbe5pRNFr3b7UrVK2kMcLw=="
+      },
+      "Konscious.Security.Cryptography.Argon2": {
+        "type": "Direct",
+        "requested": "[1.3.1, )",
+        "resolved": "1.3.1",
+        "contentHash": "T+OAGwzYYXftahpOxO7J4xA5K6urxwGnWQf3M+Jpi+76Azv/0T3M5SuN+h7/QvXuiqNw3ZEZ5QqVLI5ygDAylw==",
+        "dependencies": {
+          "Konscious.Security.Cryptography.Blake2": "1.1.1"
+        }
+      },
+      "Microsoft.Extensions.Options.ConfigurationExtensions": {
+        "type": "Direct",
+        "requested": "[11.0.0, )",
+        "resolved": "11.0.0",
+        "contentHash": "s4JrxDPwxk8pE6LFVj+M5TrDHxOVIoCnQBy5lexs5uAYeggPYwAc/pSDNgVuZN14pCmZGCInygI/2ylCdLYShw==",
+        "dependencies": {
+          "Microsoft.Extensions.Configuration.Binder": "11.0.0"
+        }
+      },
+      "Microsoft.Extensions.Options.DataAnnotations": {
+        "type": "Direct",
+        "requested": "[11.0.0, )",
+        "resolved": "11.0.0",
+        "contentHash": "qfBLNujVonPnJ07emPvup6ncY8LS8JqrV7qm/Ig4UMrQBGhL/1ZFnwq+l692JoKkQI7fuUrck3c1e2sxTBE4bQ=="
+      },
+      "Konscious.Security.Cryptography.Blake2": {
+        "type": "Transitive",
+        "resolved": "1.1.1",
+        "contentHash": "odwOyzj/J/lHJZNwFWJGU/LRecBShupAJ2S8TQqZfhUe9niHzu/voBYK5wuVKsvSpzbfupKQYZguVyIk1sgOkQ=="
+      },
+      "Microsoft.Extensions.Configuration": {
+        "type": "Transitive",
+        "resolved": "11.0.0",
+        "contentHash": "VQS/GkFU9oLQmXZv0AR/zluF0YAbEAoUQ5aYMqcRc2TWeKa6m2AjInAOnDhCcoWI5a6LQUCzTcl8B3DZZaPZLg=="
+      },
+      "Microsoft.Extensions.Configuration.Binder": {
+        "type": "Transitive",
+        "resolved": "11.0.0",
+        "contentHash": "3eoaKF4Stat1PSN+KFwqmy04sM9DwGuHM1o1lHwuNFM/TqwQ+PCIvaQHS4lcT3kJl5rwvDK4w/rIlR0wc024eQ==",
+        "dependencies": {
+          "Microsoft.Extensions.Configuration": "11.0.0"
+        }
+      },
+      "dle.domain": {
+        "type": "Project"
+      }
+    }
+  }
+}

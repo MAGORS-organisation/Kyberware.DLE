@@ -1,0 +1,189 @@
+{
+  "version": 2,
+  "dependencies": {
+    "net11.0": {
+      "MaxMind.GeoIP2": {
+        "type": "Direct",
+        "requested": "[6.1.0, )",
+        "resolved": "6.1.0",
+        "contentHash": "IBy7B0mhzZfLvCZd2znr8+nquNUL8K973MVorQEQowvlX/BHFCVHK6BoMhdIT6ZpDIc8ETMl4ZyixS/6iBQ26A==",
+        "dependencies": {
+          "MaxMind.Db": "5.1.0"
+        }
+      },
+      "Microsoft.Extensions.Caching.Hybrid": {
+        "type": "Direct",
+        "requested": "[11.0.0, )",
+        "resolved": "11.0.0",
+        "contentHash": "SB0COfE5ZlYNouaQicXTFp4rcLNkNjTcstFdUvqEVERYIh5amqXuDsl7yblotT5Am9XXlAjmLKP9SLBz0VYJAA=="
+      },
+      "Microsoft.Extensions.Caching.StackExchangeRedis": {
+        "type": "Direct",
+        "requested": "[11.0.0, )",
+        "resolved": "11.0.0",
+        "contentHash": "pLOYsJmqt/jx4dbEojwnz1MsRTz8lDBceXMcKpnpjxPiOxtXUUVqw4f7aDmpJbDnCE3K5yMvnW3ZXzeFLoGmaw==",
+        "dependencies": {
+          "StackExchange.Redis": "2.7.27"
+        }
+      },
+      "OpenTelemetry.Exporter.OpenTelemetryProtocol": {
+        "type": "Direct",
+        "requested": "[1.18.0, )",
+        "resolved": "1.18.0",
+        "contentHash": "Et3WAviooKGObZjUZN8d6eTsdJs1YM3ZoN+KlWSAHksTmHG1nyGi9XGo2wb0fkFMWK0g80FOPdR1njg52Dm+aw==",
+        "dependencies": {
+          "OpenTelemetry": "1.18.0"
+        }
+      },
+      "OpenTelemetry.Extensions.Hosting": {
+        "type": "Direct",
+        "requested": "[1.18.0, )",
+        "resolved": "1.18.0",
+        "contentHash": "u+JMA82H65MKwMvd2qUpL8C2qE4Jux2nvX9hmy036UK/Apv2YyIRYCttF/vlX6nMPcAKI8BXkscmL4QG3C69fw==",
+        "dependencies": {
+          "OpenTelemetry": "1.18.0"
+        }
+      },
+      "OpenTelemetry.Instrumentation.AspNetCore": {
+        "type": "Direct",
+        "requested": "[1.18.0, )",
+        "resolved": "1.18.0",
+        "contentHash": "hBiMXE/CGIAHUOpi0gScNkjHB0L9XbCin5lZObL+dMBl4OmpndnHgxP3JZDnnGtU6qOzdeh8TYUV9f6Jgmmhlw==",
+        "dependencies": {
+          "OpenTelemetry.Api.ProviderBuilderExtensions": "[1.18.0, 2.0.0)"
+        }
+      },
+      "OpenTelemetry.Instrumentation.Http": {
+        "type": "Direct",
+        "requested": "[1.18.0, )",
+        "resolved": "1.18.0",
+        "contentHash": "/X57peOOa4a+9V4DSVXbuIWdsAxmU5gsxw8lu+gJU0zuewsYhC9f6qdm8GEW0VvqG9e+gxn0HdVR5G3YHcWDTw==",
+        "dependencies": {
+          "OpenTelemetry.Api.ProviderBuilderExtensions": "[1.18.0, 2.0.0)"
+        }
+      },
+      "OpenTelemetry.Instrumentation.Runtime": {
+        "type": "Direct",
+        "requested": "[1.18.0, )",
+        "resolved": "1.18.0",
+        "contentHash": "McuXGjBJDL/Cown2PxfUQysK98MZG7ZDjO/IKUtaAx8t1m0PB0d+QtJC79RFTVipMhRIwjJiULNOp0OGfZbvwg==",
+        "dependencies": {
+          "OpenTelemetry.Api": "[1.18.0, 2.0.0)"
+        }
+      },
+      "QRCoder": {
+        "type": "Direct",
+        "requested": "[1.8.0, )",
+        "resolved": "1.8.0",
+        "contentHash": "RuvX3PEXU6pbY/I5ItAk800jm62r+YnoPLgyS2WTgwxkOnGkOfU9ORiipHUF0LkLyqM8rlroUCA319JjRYfRFQ==",
+        "dependencies": {
+          "System.Drawing.Common": "6.0.0"
+        }
+      },
+      "UAParser": {
+        "type": "Direct",
+        "requested": "[3.1.47, )",
+        "resolved": "3.1.47",
+        "contentHash": "I68Jl/Vs5RQZdz9BbmYtnXgujg0jVd61LhKbyNZOCm9lBxZFGxLbiQo6yFj21VYi7DzPvEvrVOmeC6v41AoLfw=="
+      },
+      "Konscious.Security.Cryptography.Blake2": {
+        "type": "Transitive",
+        "resolved": "1.1.1",
+        "contentHash": "odwOyzj/J/lHJZNwFWJGU/LRecBShupAJ2S8TQqZfhUe9niHzu/voBYK5wuVKsvSpzbfupKQYZguVyIk1sgOkQ=="
+      },
+      "MaxMind.Db": {
+        "type": "Transitive",
+        "resolved": "5.1.0",
+        "contentHash": "u4fynkxX0bNLYaz90N9m9FiaOX22WmEFKlHnvlqw8sswngH54oYvgynhT4GXZvqTy8l7D96/+E9OVzuu34ex9w=="
+      },
+      "Microsoft.Win32.SystemEvents": {
+        "type": "Transitive",
+        "resolved": "6.0.0",
+        "contentHash": "hqTM5628jSsQiv+HGpiq3WKBl2c8v1KZfby2J6Pr7pEPlK9waPdgEO6b8A/+/xn/yZ9ulv8HuqK71ONy2tg67A=="
+      },
+      "OpenTelemetry": {
+        "type": "Transitive",
+        "resolved": "1.18.0",
+        "contentHash": "13AKxycK+olOLe061MjliPTNBR/DUkjyRr0b9zwUhKyMjFS8lXS7G31R85rkbM55up2YFmdykWdAw2giBDJpiQ==",
+        "dependencies": {
+          "OpenTelemetry.Api.ProviderBuilderExtensions": "1.18.0"
+        }
+      },
+      "OpenTelemetry.Api": {
+        "type": "Transitive",
+        "resolved": "1.18.0",
+        "contentHash": "Dhzm5oughIY9EWckt2J1yXcEbXpki5WCL2q7prJoYxzH6C7jdkfGtPMTkUVZZ4AhjJKzQnlC+kLSIlmIVwC4Vw=="
+      },
+      "OpenTelemetry.Api.ProviderBuilderExtensions": {
+        "type": "Transitive",
+        "resolved": "1.18.0",
+        "contentHash": "io6A6PJFp3vIObRGf6oPjdHsdglkinXt/0SpTDJHrVnsLxUtOzwh/QwTsnhBJ43wJ6QcGMkyNzsSSY8XEB1Q5Q==",
+        "dependencies": {
+          "OpenTelemetry.Api": "1.18.0"
+        }
+      },
+      "Pipelines.Sockets.Unofficial": {
+        "type": "Transitive",
+        "resolved": "2.2.8",
+        "contentHash": "zG2FApP5zxSx6OcdJQLbZDk2AVlN2BNQD6MorwIfV6gVj0RRxWPEp2LXAxqDGZqeNV1Zp0BNPcNaey/GXmTdvQ=="
+      },
+      "StackExchange.Redis": {
+        "type": "Transitive",
+        "resolved": "2.7.27",
+        "contentHash": "Uqc2OQHglqj9/FfGQ6RkKFkZfHySfZlfmbCl+hc+u2I/IqunfelQ7QJi7ZhvAJxUtu80pildVX6NPLdDaUffOw==",
+        "dependencies": {
+          "Pipelines.Sockets.Unofficial": "2.2.8"
+        }
+      },
+      "System.Drawing.Common": {
+        "type": "Transitive",
+        "resolved": "6.0.0",
+        "contentHash": "NfuoKUiP2nUWwKZN6twGqXioIe1zVD0RIj2t976A+czLHr2nY454RwwXs6JU9Htc6mwqL6Dn/nEL3dpVf2jOhg==",
+        "dependencies": {
+          "Microsoft.Win32.SystemEvents": "6.0.0"
+        }
+      },
+      "dle.crypto": {
+        "type": "Project",
+        "dependencies": {
+          "BouncyCastle.Cryptography": "[2.7.0, )",
+          "Dle.Domain": "[1.0.0, )",
+          "Konscious.Security.Cryptography.Argon2": "[1.3.1, )"
+        }
+      },
+      "dle.domain": {
+        "type": "Project"
+      },
+      "dle.persistence.fast": {
+        "type": "Project",
+        "dependencies": {
+          "Dle.Domain": "[1.0.0, )",
+          "Microsoft.Extensions.Caching.Hybrid": "[11.0.0, )",
+          "Microsoft.Extensions.Caching.StackExchangeRedis": "[11.0.0, )",
+          "Npgsql": "[10.0.3, )"
+        }
+      },
+      "BouncyCastle.Cryptography": {
+        "type": "CentralTransitive",
+        "requested": "[2.7.0, )",
+        "resolved": "2.7.0",
+        "contentHash": "U+12df8UEWHgBi04YVf/Lgi2dy3SItlIYvHjjEVa/BngCQIzDCDRBk50DDByCfDvSbe5pRNFr3b7UrVK2kMcLw=="
+      },
+      "Konscious.Security.Cryptography.Argon2": {
+        "type": "CentralTransitive",
+        "requested": "[1.3.1, )",
+        "resolved": "1.3.1",
+        "contentHash": "T+OAGwzYYXftahpOxO7J4xA5K6urxwGnWQf3M+Jpi+76Azv/0T3M5SuN+h7/QvXuiqNw3ZEZ5QqVLI5ygDAylw==",
+        "dependencies": {
+          "Konscious.Security.Cryptography.Blake2": "1.1.1"
+        }
+      },
+      "Npgsql": {
+        "type": "CentralTransitive",
+        "requested": "[10.0.3, )",
+        "resolved": "10.0.3",
+        "contentHash": "7nb5YzXuvWWJxB0J8DiyL3we+X4FOctZrt0fIBnucOIaIevFEEwGQVZKtiu9olXdlNAK1eNgqSral6r/jlhI4w=="
+      }
+    }
+  }
+}

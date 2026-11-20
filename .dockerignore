@@ -1,0 +1,56 @@
+# =============================================================================
+# Build-context ignore rules for deploy/docker/Dockerfile.* (context = repository root).
+#
+# Every image build (compose, the release, security and helm workflows) uses the repository root
+# as its context, so this is the one file Docker applies. There is no per-Dockerfile copy.
+# =============================================================================
+
+# Version control and editors
+.git
+.github
+.vs
+.vscode
+.idea
+**/*.user
+**/*.swp
+
+# Build output — everything is rebuilt inside the image
+**/bin
+**/obj
+**/out
+**/artifacts
+**/publish
+**/TestResults
+**/*.binlog
+**/BenchmarkDotNet.Artifacts
+
+# Node: fetched with npm ci in the spa stage; dist is produced there
+**/node_modules
+**/dist
+**/.vite
+**/*.tsbuildinfo
+src/Dle.Control/wwwroot/admin
+
+# Not needed for either image. LICENSE and NOTICE stay in the context: both runtime stages of
+# each image copy them to /app/licenses/.
+tests
+docs
+sdk
+deploy/aspire
+deploy/helm
+deploy/postgres
+deploy/*.yml
+deploy/.env
+deploy/.env.*
+deploy/Caddyfile
+deploy/geoip
+*.md
+
+# Local secrets and databases
+**/.env
+**/.env.*
+**/secrets.json
+**/*.mmdb
+**/*.pfx
+**/*.key
+**/*.pem
