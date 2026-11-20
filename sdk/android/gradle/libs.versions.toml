@@ -1,11 +1,11 @@
 [versions]
 # AGP 9.3 is the newest line inside Kotlin 2.4's supported range (AGP <= 9.3.1, Gradle <= 9.7.0)
 # and compiles against API 37. AGP 9 has Kotlin built in, so there is no kotlin-android plugin.
-agp = "9.3.1"
+agp = "9.5.1"
 kotlin = "2.4.21"
 coroutines = "1.11.0"
 serialization = "1.13.0"
-okhttp = "4.12.0"
+okhttp = "4.12.1"
 installreferrer = "2.2"
 securityCrypto = "1.1.0-alpha06"
 junit5 = "5.11.3"
