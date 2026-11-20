@@ -630,6 +630,8 @@ jobs:
       id-token: write # cosign sign-blob (keyless)
     env:
       VERSION: ${{ needs.version.outputs.version }}
+      # A pre-release tag, or a plain tag whose k6 gate did not pass.
+      PUBLISH_AS_PRERELEASE: ${{ needs.version.outputs.prerelease == 'true' || needs.loadtest.outputs.loadtest != 'ran' }}
     steps:
       - name: Download SBOM/CBOM
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
@@ -717,14 +719,20 @@ jobs:
           } > notes.md
           cat notes.md
 
+      # The repository has immutable releases: assets can be added only before a release is
+      # published. The action creates a plain release as a draft, uploads the assets and publishes
+      # it, but it publishes a pre-release at once unless the pre-release is a draft. So a
+      # pre-release is created as a draft here and published by the next step, after its assets.
       - name: Create GitHub release
+        id: release
         uses: softprops/action-gh-release@8a0cd651e5b2365bd640854a3fa5dfc70e4875f3 # v3.0.4
         with:
           tag_name: ${{ github.ref_name }}
           name: DLE ${{ needs.version.outputs.version }}
           body_path: notes.md
           generate_release_notes: true
-          prerelease: ${{ needs.version.outputs.prerelease == 'true' || needs.loadtest.outputs.loadtest != 'ran' }}
+          prerelease: ${{ env.PUBLISH_AS_PRERELEASE }}
+          draft: ${{ env.PUBLISH_AS_PRERELEASE }}
           fail_on_unmatched_files: true
           files: |
             assets/sbom/*.cdx.json
@@ -732,3 +740,15 @@ jobs:
             assets/chart/*.tgz
             assets/chart/*.sigstore.json
             assets/digests/*.txt
+
+      # Runs only once every asset is on the draft: the action above fails the job on any upload
+      # error, and then the draft stays unpublished and the job can be re-run.
+      - name: Publish the pre-release
+        if: ${{ env.PUBLISH_AS_PRERELEASE == 'true' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          RELEASE_ID: ${{ steps.release.outputs.id }}
+        run: |
+          gh api --method PATCH "repos/$REPO/releases/$RELEASE_ID" -F draft=false -f make_latest=false \
+            --jq '"published \(.html_url): prerelease=\(.prerelease), assets=\(.assets | length)"'
