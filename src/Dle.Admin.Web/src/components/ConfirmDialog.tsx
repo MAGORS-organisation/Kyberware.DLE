@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
+import { useId, useRef, useState, type ReactNode } from 'react';
 import { useFocusTrap } from '../hooks/useFocusTrap';
 import { useT } from '../i18n';
 import styles from './ConfirmDialog.module.css';
@@ -37,13 +37,17 @@ export function ConfirmDialog({
   const titleId = useId();
   const detailId = useId();
   const [typed, setTyped] = useState('');
+  const [wasOpen, setWasOpen] = useState(open);
   useFocusTrap(ref, open, busy ? undefined : onCancel);
 
-  useEffect(() => {
+  // The word typed to confirm one action must not carry over to the next time the dialog opens.
+  // Reset while rendering, when `open` changes, so no frame shows the old word.
+  if (open !== wasOpen) {
+    setWasOpen(open);
     if (!open) {
       setTyped('');
     }
-  }, [open]);
+  }
 
   if (!open) {
     return null;
