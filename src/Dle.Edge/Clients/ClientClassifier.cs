@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using System.Net;
+using System.Text.RegularExpressions;
 
 using Dle.Edge.Configuration;
 
@@ -39,8 +40,54 @@ public sealed class ClientClassifier : IClientClassifier
     private const ulong FnvOffsetBasis = 14695981039346656037UL;
     private const ulong FnvPrime = 1099511628211UL;
 
-    private readonly Parser _parser;
+    /// <summary>How long one regular expression may run before the parser gives up on it.</summary>
+    /// <remarks>
+    /// The guard against a pathological string: a regular expression cascade over attacker-controlled
+    /// input is a denial-of-service primitive without one. The parser gives up silently and tries the
+    /// next expression, so an answer can lack the match that decided it. That happens far more often
+    /// than the limit suggests: the runtime measures it with a clock that moves in steps of 4 to 16 ms,
+    /// so an expression that runs for a fraction of a millisecond across a step is dropped too, and so is
+    /// one that is being compiled. <see cref="Describe"/> therefore watches for drops rather than time.
+    /// </remarks>
+    internal static readonly TimeSpan MatchTimeout = TimeSpan.FromMilliseconds(5);
+
+    /// <summary>
+    /// The user agents the warm-up parses besides noise. An expression that looks for a literal is
+    /// not compiled until a string containing it arrives, so the common literals are all here.
+    /// </summary>
+    private static readonly string[] WarmUpUserAgents =
+    [
+        "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1",
+        "Mozilla/5.0 (iPad; CPU OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1",
+        "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 Mobile/15E148 Instagram 340.0.0.24.109",
+        "Mozilla/5.0 (Linux; Android 15; Pixel 9) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Mobile Safari/537.36",
+        "Mozilla/5.0 (Linux; Android 14; SM-X710) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36 Edg/131.0.0.0",
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:133.0) Gecko/20100101 Firefox/133.0",
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 14_4) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Safari/605.1.15",
+        "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+        "Mozilla/5.0 (Linux; Android 14; SM-S918B) AppleWebKit/537.36 (KHTML, like Gecko) SamsungBrowser/26.0 Chrome/122.0.0.0 Mobile Safari/537.36",
+        "Mozilla/5.0 (Windows Phone 10.0; Android 6.0.1; Microsoft; Lumia 950) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/52.0.2743.116 Mobile Safari/537.36 Edge/15.15063",
+        "Mozilla/5.0 (Mobile; LYF/F300B/LYF-F300B-001-01-15-130718-i;Android; rv:48.0) Gecko/48.0 Firefox/48.0 KAIOS/2.5",
+        "Mozilla/5.0 (SMART-TV; LINUX; Tizen 6.0) AppleWebKit/537.36 (KHTML, like Gecko) 76.0.3809.146/6.0 TV Safari/537.36",
+        "okhttp/4.12.0",
+        "Go-http-client/2.0",
+    ];
+
+    /// <summary>
+    /// One parser for the process. Building it and compiling its expressions is the expensive part, it
+    /// has no state per classifier, and it is safe to share between threads.
+    /// </summary>
+    private static readonly Lazy<Parser> SharedParser = new(static () => Parser.GetDefault(new ParserOptions
+    {
+        // The compiled regular expressions cost more to build and are markedly faster to run, which
+        // is the right trade for a process that parses user agents for its whole lifetime.
+        UseCompiledRegex = true,
+        MatchTimeOut = MatchTimeout,
+    }));
+
     private readonly IGeoIpResolver _geoIp;
+    private readonly Func<string, UserAgentFacts> _parse;
     private readonly int _capacity;
     private readonly ConcurrentDictionary<ulong, UserAgentFacts> _memo = new();
 
@@ -51,23 +98,68 @@ public sealed class ClientClassifier : IClientClassifier
     /// <param name="options">Edge options; supplies the memo capacity.</param>
     /// <exception cref="ArgumentNullException">An argument is <see langword="null"/>.</exception>
     public ClientClassifier(IGeoIpResolver geoIp, IOptions<EdgeOptions> options)
+        : this(geoIp, options, parse: null)
+    {
+    }
+
+    /// <summary>Creates the classifier over a parser the caller controls.</summary>
+    /// <param name="geoIp">Geographic resolver; may be permanently unavailable.</param>
+    /// <param name="options">Edge options; supplies the memo capacity.</param>
+    /// <param name="parse">Parses one user agent, or <see langword="null"/> for the real parser.</param>
+    /// <exception cref="ArgumentNullException">An argument other than <paramref name="parse"/> is <see langword="null"/>.</exception>
+    internal ClientClassifier(
+        IGeoIpResolver geoIp,
+        IOptions<EdgeOptions> options,
+        Func<string, UserAgentFacts>? parse)
     {
         ArgumentNullException.ThrowIfNull(geoIp);
         ArgumentNullException.ThrowIfNull(options);
 
-        _geoIp = geoIp;
-        _capacity = options.Value.UserAgentCacheCapacity;
+        DroppedExpressions.StartCounting();
 
-        // The compiled regular expressions cost more to build and are markedly faster to run, which
-        // is the right trade for a process that parses user agents for its whole lifetime. The match
-        // timeout is the guard against a pathological string: a regular expression cascade over
-        // attacker-controlled input is a denial-of-service primitive without one.
-        _parser = Parser.GetDefault(new ParserOptions
-        {
-            UseCompiledRegex = true,
-            MatchTimeOut = TimeSpan.FromMilliseconds(5),
-        });
+        _geoIp = geoIp;
+        _parse = parse ?? Parse;
+        _capacity = options.Value.UserAgentCacheCapacity;
     }
+
+    /// <summary>
+    /// Runs the parser over input that makes it compile its regular expressions, without keeping any
+    /// answer.
+    /// </summary>
+    /// <remarks>
+    /// The parser compiles each expression the first time it runs it, and a string that matches
+    /// nothing runs the whole cascade, so without this the first requests after start-up wait for all
+    /// of it: about a second and a half in a container. While that is going on an expression can also run
+    /// past <see cref="MatchTimeout"/> because it is being compiled, which loses a match and makes the
+    /// answer wrong. Nothing parsed here goes into the memo, because those are the answers that may be wrong.
+    /// </remarks>
+    /// <param name="cancellationToken">Cancelled when the host gives up starting.</param>
+    /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was cancelled.</exception>
+    internal void WarmUp(CancellationToken cancellationToken)
+    {
+        // Noise first: it pays for nearly all of the cascade on its own.
+        foreach (int length in (ReadOnlySpan<int>)[1024, 512, 128, 16])
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            _ = _parse(WarmUpNoise(length));
+        }
+
+        foreach (string userAgent in WarmUpUserAgents)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            _ = _parse(userAgent);
+        }
+    }
+
+    /// <summary>Printable text that contains no token a user agent expression looks for.</summary>
+    private static string WarmUpNoise(int length) =>
+        string.Create(length, 0, static (span, _) =>
+        {
+            for (int i = 0; i < span.Length; i++)
+            {
+                span[i] = (char)('a' + ((i * 7) % 26));
+            }
+        });
 
     /// <inheritdoc />
     /// <exception cref="ArgumentNullException"><paramref name="request"/> is <see langword="null"/>.</exception>
@@ -118,7 +210,24 @@ public sealed class ClientClassifier : IClientClassifier
             return cached;
         }
 
-        UserAgentFacts facts = Parse(userAgent);
+        int dropped = DroppedExpressions.OnThisThread;
+        UserAgentFacts facts = _parse(userAgent);
+
+        if (DroppedExpressions.OnThisThread != dropped)
+        {
+            // The parser dropped an expression (see MatchTimeout), so this answer may be missing the
+            // match that decided it, and the memo would keep it for the life of the generation. A drop
+            // comes from the clock or from compiling, not from the string, so the next parse almost
+            // always runs clean. Only a clean answer is kept; one that dropped twice is used for this
+            // request and parsed again on the next.
+            dropped = DroppedExpressions.OnThisThread;
+            facts = _parse(userAgent);
+
+            if (DroppedExpressions.OnThisThread != dropped)
+            {
+                return facts;
+            }
+        }
 
         // A generational reset rather than an eviction policy. Least-recently-used bookkeeping on the
         // hot path would cost more than the parse it saves, and the working set of real user agents
@@ -149,7 +258,7 @@ public sealed class ClientClassifier : IClientClassifier
         }
 
         string parseableUa = userAgent.Length > 1024 ? userAgent[..1024] : userAgent;
-        ClientInfo parsed = _parser.Parse(parseableUa);
+        ClientInfo parsed = SharedParser.Value.Parse(parseableUa);
         Platform platform = ReadPlatform(parsed.OS.Family);
         ClientChannel channel = WebViewCatalog.Classify(userAgent);
 
@@ -360,6 +469,41 @@ public sealed class ClientClassifier : IClientClassifier
         }
 
         return hash;
+    }
+
+    /// <summary>
+    /// Counts, per thread, the regular expressions that ran past <see cref="MatchTimeout"/>.
+    /// </summary>
+    /// <remarks>
+    /// The parser catches the timeout itself and returns as if the expression had not matched, so the
+    /// only way to know an answer lost a match is to see the exception being thrown. It is thrown and
+    /// caught on the parsing thread, which makes a per-thread count before and after a parse exact.
+    /// The handler sees every exception in the process and does one type check for each.
+    /// </remarks>
+    private static class DroppedExpressions
+    {
+        [ThreadStatic]
+        private static int s_onThisThread;
+
+        private static int s_counting;
+
+        /// <summary>Expressions dropped on the calling thread so far.</summary>
+        internal static int OnThisThread => s_onThisThread;
+
+        /// <summary>Starts counting; later calls do nothing.</summary>
+        internal static void StartCounting()
+        {
+            if (Interlocked.Exchange(ref s_counting, 1) == 0)
+            {
+                AppDomain.CurrentDomain.FirstChanceException += static (_, e) =>
+                {
+                    if (e.Exception is RegexMatchTimeoutException)
+                    {
+                        s_onThisThread++;
+                    }
+                };
+            }
+        }
     }
 }
 

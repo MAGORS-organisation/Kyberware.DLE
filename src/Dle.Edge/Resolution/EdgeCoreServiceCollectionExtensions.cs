@@ -155,6 +155,7 @@ public static class EdgeCoreServiceCollectionExtensions
 
         services.TryAddSingleton<IBotVerifier, BotVerifier>();
         services.TryAddSingleton<IClientClassifier, ClientClassifier>();
+        services.TryAddEnumerable(ServiceDescriptor.Singleton<IHostedService, ClientClassifierWarmup>());
     }
 
     /// <summary>
