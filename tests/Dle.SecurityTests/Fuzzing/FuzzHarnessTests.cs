@@ -24,7 +24,7 @@ namespace Dle.SecurityTests.Fuzzing;
 /// mutations of them and with pure noise.
 /// </para>
 /// </remarks>
-public sealed class FuzzHarnessTests
+public sealed class FuzzHarnessTests : IClassFixture<FuzzHarnessTests.WarmTargets>
 {
     /// <summary>How long any single input may take before it counts as a hang.</summary>
     /// <remarks>
@@ -166,11 +166,6 @@ public sealed class FuzzHarnessTests
         // Regular-expression denial of service through the classifier: the header is attacker chosen,
         // the parser is a set of compiled regular expressions, and catastrophic backtracking on a hot
         // path is a denial of service that costs the attacker one request.
-        // The hang threshold is about steady-state parsing, not about the one-off cost of the parser
-        // compiling its regular-expression set on first use, which on a cold two-vCPU CI runner has
-        // been measured above the threshold. Pay that cost once, outside the timed loop.
-        FuzzTargets.UserAgent(Encoding.UTF8.GetBytes(UserAgentSeeds[0]));
-
         Gen.Select(Gen.Int[0, UserAgentSeeds.Length - 1], Gen.Int[0, 8191], Gen.Byte).Sample(
             mutation =>
             {
@@ -235,11 +230,73 @@ public sealed class FuzzHarnessTests
             FuzzTargets.All.Select(entry => entry.Name).Distinct(StringComparer.Ordinal).Count());
     }
 
+    /// <summary>Runs every target untimed, before any test of this class times one.</summary>
+    /// <remarks>
+    /// <para>
+    /// The hang threshold is about steady-state work. The first parse of a user agent makes the runtime
+    /// compile every regular expression the parser tries, one at a time for the whole process, and a
+    /// string that matches nothing tries nearly all of them. On a CI runner that takes about five seconds, which is the
+    /// threshold, so without this the first few random inputs of a run decide whether it passes.
+    /// </para>
+    /// <para>
+    /// Noise of several lengths and the real headers are both needed: a string that matches early only
+    /// compiles the part of the set that it tries. A few expressions still compile later, a
+    /// millisecond or two each.
+    /// </para>
+    /// </remarks>
+    public sealed class WarmTargets
+    {
+        /// <summary>Warms every target.</summary>
+        public WarmTargets()
+        {
+            foreach ((string name, Action<byte[]> target) in FuzzTargets.All)
+            {
+                foreach (int length in (ReadOnlySpan<int>)[0, 1, 16, 128, 512, 1024, 2048, 4096])
+                {
+                    Invoke(name, target, Noise(length, seed: (uint)length));
+                }
+
+                foreach (string seed in UserAgentSeeds.Concat(RoutingRuleSeeds))
+                {
+                    Invoke(name, target, Encoding.UTF8.GetBytes(seed));
+                }
+            }
+        }
+    }
+
+    /// <summary>Deterministic noise, so that the warm-up is the same on every run.</summary>
+    private static byte[] Noise(int length, uint seed)
+    {
+        byte[] bytes = new byte[length];
+        uint state = seed | 1;
+
+        for (int i = 0; i < bytes.Length; i++)
+        {
+            state = unchecked((state * 1664525) + 1013904223);
+            bytes[i] = (byte)(state >> 24);
+        }
+
+        return bytes;
+    }
+
     /// <summary>Runs one target and turns a throw or a hang into a readable failure.</summary>
     private static void Run(string name, Action<byte[]> target, byte[] input)
     {
         long started = Stopwatch.GetTimestamp();
 
+        Invoke(name, target, input);
+
+        TimeSpan elapsed = Stopwatch.GetElapsedTime(started);
+
+        Assert.True(
+            elapsed < HangThreshold,
+            string.Create(
+                CultureInfo.InvariantCulture,
+                $"The {name} fuzz target took {elapsed.TotalMilliseconds:F0} ms on {Describe(input)}, which is the shape of a denial-of-service input rather than a slow one."));
+    }
+
+    private static void Invoke(string name, Action<byte[]> target, byte[] input)
+    {
         try
         {
             target(input);
@@ -250,14 +307,6 @@ public sealed class FuzzHarnessTests
                 "The " + name + " fuzz target threw on input " + Describe(input) + ".",
                 exception);
         }
-
-        TimeSpan elapsed = Stopwatch.GetElapsedTime(started);
-
-        Assert.True(
-            elapsed < HangThreshold,
-            string.Create(
-                CultureInfo.InvariantCulture,
-                $"The {name} fuzz target took {elapsed.TotalMilliseconds:F0} ms on {Describe(input)}, which is the shape of a denial-of-service input rather than a slow one."));
     }
 
     private static string Describe(byte[] input)
